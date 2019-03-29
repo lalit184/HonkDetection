@@ -4,15 +4,15 @@ import time
 import numpy as np
 from scipy.io import wavfile
 import csv
-from Parameters import Parameter
 from operator import eq
 from scipy import stats
 from python_speech_features import mfcc
+from scipy.io import wavfile
+from scipy import signal
+import librosa
 
-
-class DataProcessing(Parameter):
+class DataProcessing():
 	def __init__(self):
-		super(DataProcessing, self).__init__()
 		self.Names2Label=	{	
 								"air_conditioner":0, "car_horn":1,
 								"children_playing":0,"dog_bark":0,
@@ -20,112 +20,61 @@ class DataProcessing(Parameter):
 								"gun_shot":0,"jackhammer":0,
 								"siren":0,"street_music":0
 							}
-		self.TrainWavFileDirectory='./URBAN-SED_v2.0.0/audio/train/'
-		self.TrainTxtAnnotationDirectory='./URBAN-SED_v2.0.0/annotations/train/'
+		self.NumClasses=2
+		self.TotalEpochs=20
 		
-		self.ValidateWavFileDirectory='./URBAN-SED_v2.0.0/audio/validate/'
-		self.ValidateTxtAnnotationDirectory='./URBAN-SED_v2.0.0/annotations/validate/'
-			
+		self.SamplingFrequency=44100
+		self.SignalLength=441000
+		self.SamplesInWindow=1024
+
+		
+					
 	
 	def FetchAnnotation(self,Name):
 		"""
-		We take the annotation data and generate a one hot label for each 
-		element in the sound vector.
-
-		For a sound of type 	 [aaaabbbbaaa]
-		we have the annotation  [[00001111000],
-								 [11110000111]]
-		which is a psuedo one hot vector annotationn
+		This is to generate time frame level one hot encoding 
+		of the class labels.
 		"""
-		Annotation=np.zeros(int(self.SignalLength/self.SubSamplingRate))
+		Annotation=np.zeros(self.SignalLength)
 		with open(Name) as f:
 			reader = csv.reader(f, delimiter="\t")
 			AnnotationCSV = list(reader)
 		
 		for category in AnnotationCSV:
-			Annotation[	int(self.SamplingFrequency*float(category[0])/self.SubSamplingRate):
-						int(self.SamplingFrequency*float(category[1])/self.SubSamplingRate)] =self.Names2Label[category[2]]
-		Annotation = Annotation.reshape((-1,int(self.WindowTime*self.SamplingFrequency/self.SubSamplingRate)))
+			Annotation[	int(self.SamplingFrequency*float(category[0])):
+						int(self.SamplingFrequency*float(category[1]))] =self.Names2Label[category[2]]
+		Annotation=Annotation[:self.SamplesInWindow*(self.SignalLength//self.SamplesInWindow)]				
+		Annotation = Annotation.reshape((-1,self.SamplesInWindow))
 
 		Time2WindowLabel=np.zeros((Annotation.shape[0],self.NumClasses))
 		
 		for i in range(Annotation.shape[0]):
 			Time2WindowLabel[i,:]=np.eye(self.NumClasses)[int(stats.mode(Annotation[i,:]).mode[0])] 
+			
 		return Time2WindowLabel
 
 	def FetchSignal(self,Name):
 		SamplingFrequency, Data = wavfile.read(Name)
-		Data=Data[::self.SubSamplingRate]
-		Data=Data[:441000]
-		Data=mfcc(	signal=Data,samplerate=self.SamplingFrequency/self.SubSamplingRate,nfft=self.WindowSize,nfilt=100,
-					winlen=self.WindowTime,winstep=self.WindowStep,winfunc=np.hamming,numcep=self.NumCep,highfreq=2000,lowfreq=10)
-
+		Data=Data.astype(float)
+		stft = librosa.stft(Data, n_fft=4*self.SamplesInWindow, hop_length=self.SamplesInWindow)
+		stft_magnitude, stft_phase = librosa.magphase(stft)
+		print(Name)
+		#print("stft size",stft_magnitude.shape)
 		"""
-		the size of Data is  SignalLength/WindowTime,NumCep
+		Data=Data[:self.SignalLength].astype(float)
+		MelSpectrum = librosa.feature.melspectrogram(y=Data,sr=SamplingFrequency,n_fft=self.SamplesInWindow,hop_length=self.SamplesInWindow,fmax=22050)
+		epsilon=1e-10
+		MelLogSpectrum=np.log(MelSpectrum+epsilon).T
+		MelLogSpectrum=MelLogSpectrum[:430,:]
 		"""
-		return Data
+		return stft_magnitude
 
-	def FetchTrainInputsAndLabels(self):
-		WaveFilesList=[]
-		AnnotationFileList=[]
-
-		for file in glob.glob(self.TrainWavFileDirectory+"*.wav"):
-			WaveFilesList.append(file)
-
-		for file in glob.glob(self.TrainTxtAnnotationDirectory+"*.txt"):
-			AnnotationFileList.append(file)
-
-		WaveFilesList.sort()	
-		AnnotationFileList.sort()
-		#WaveFilesList=WaveFilesList[:2000]
-		#AnnotationFileList=AnnotationFileList[:2000]
-
-		
-		for WavFileName,AnnotationFileName in zip(WaveFilesList,AnnotationFileList):
-			"""
-
-			Some reshaping op
-
-			"""
-			#print(WavFileName,AnnotationFileName)
-			WaveArray=self.FetchSignal(WavFileName)
-			LabelArray=self.FetchAnnotation(Name=AnnotationFileName)
+	def InputsAndLabels(self,JsonDict):
+		WaveFileNames=JsonDict.keys()
+		for WaveFileName in WaveFileNames:
+			MelFeatures=self.FetchSignal(WaveFileName)
+			LabelArray=self.FetchAnnotation(JsonDict[WaveFileName])
 			
-			yield WaveArray,LabelArray[:,1]
-						
-	def FetchValidateInputsAndLabels(self):
-		WaveFilesList=[]
-		AnnotationFileList=[]
-
-		for file in glob.glob(self.ValidateWavFileDirectory+"*.wav"):
-			WaveFilesList.append(file)
-
-		for file in glob.glob(self.ValidateTxtAnnotationDirectory+"*.txt"):
-			AnnotationFileList.append(file)
-
-		WaveFilesList.sort()	
-		AnnotationFileList.sort()
-		#WaveFilesList=WaveFilesList[:665]
-		#AnnotationFileList=AnnotationFileList[:665]
-
-		
-		for WavFileName,AnnotationFileName in zip(WaveFilesList,AnnotationFileList):
-			"""
-
-			Some reshaping op
-
-			"""
-			#print(WavFileName,AnnotationFileName)
-			WaveArray=self.FetchSignal(WavFileName)
-			LabelArray=self.FetchAnnotation(Name=AnnotationFileName)
-			yield WaveArray,LabelArray[:,1]
-						
-				
-
-
-			
-				
-
-
+			yield MelFeatures,LabelArray
 
 	
