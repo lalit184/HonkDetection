@@ -3,7 +3,7 @@ import librosa
 import sys
 np.set_printoptions(threshold=sys.maxsize)
 def PreProcess(stft_magnitude,PowerFraction):
-	
+	"""
 	SamplesInWindow=1024
 	
 	Signal=Signal.astype(float)
@@ -11,11 +11,11 @@ def PreProcess(stft_magnitude,PowerFraction):
 	stft = librosa.stft(Signal, n_fft=4*SamplesInWindow, hop_length=SamplesInWindow)
 	stft_magnitude, stft_phase = librosa.magphase(stft)
 	stft_magnitude=stft_magnitude[:,50:]
-	
+	"""
 	RescaledSTFT=np.zeros_like(stft_magnitude).astype(float)
 	for i in range(len(stft_magnitude)):
 		Snippet=stft_magnitude[i,:].astype(float)
-		if np.max(Snippet)>1e5:
+		if np.max(Snippet)>5e4:
 			RescaledSTFT[i,:]=(Snippet-np.min(Snippet))/(np.max(Snippet)-np.min(Snippet))
 		else:
 			RescaledSTFT[i,:]=np.zeros_like(Snippet)
@@ -28,7 +28,7 @@ def PreProcess(stft_magnitude,PowerFraction):
 
 def Detect(Signal,Delta,PowerFraction):
 	Magnitude=PreProcess(Signal,PowerFraction)
-	print(Magnitude.shape)
+	#print(Magnitude.shape)
 	Magnitude=Magnitude.T
 	Prediction=np.zeros(430)
 	for j in range(430):

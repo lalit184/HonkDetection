@@ -58,7 +58,7 @@ class DataProcessing():
 		Data=Data.astype(float)
 		stft = librosa.stft(Data, n_fft=4*self.SamplesInWindow, hop_length=self.SamplesInWindow)
 		stft_magnitude, stft_phase = librosa.magphase(stft)
-		print(Name)
+		#print(Name)
 		#print("stft size",stft_magnitude.shape)
 		"""
 		Data=Data[:self.SignalLength].astype(float)
@@ -77,4 +77,3 @@ class DataProcessing():
 			
 			yield MelFeatures,LabelArray
 
-	
